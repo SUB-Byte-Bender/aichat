@@ -16,7 +16,7 @@ export function ChatInterface() {
         chats,
         currentChatId,
         setCurrentChatId,
-        persona,
+
         addChat,
         addMessageToChat,
         updateChat,
@@ -409,7 +409,7 @@ export function ChatInterface() {
                         <Textarea
                             value={input}
                             onValueChange={setInput}
-                            placeholder={`Message ${persona === "ulala" ? "Ulala AI" : "JARVIS"}...`}
+                            placeholder={`Message Ulala AI...`}
                             minRows={1}
                             maxRows={8}
                             variant="flat"

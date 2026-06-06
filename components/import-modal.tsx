@@ -10,11 +10,10 @@ import { useChatStore } from '@/store/chat-store';
 interface ImportModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onImport: (selected: { chats: boolean; theme: boolean; ollamaModel: boolean }) => void;
+    onImport: (selected: { chats: boolean; theme: boolean }) => void;
     availableData: {
         chats: boolean;
         theme: boolean;
-        ollamaModel: boolean;
     };
 }
 
@@ -22,8 +21,7 @@ export function ImportModal({ isOpen, onClose, onImport, availableData }: Import
     const { theme } = useChatStore();
     const [selectedOptions, setSelectedOptions] = useState({
         chats: false,
-        theme: false,
-        ollamaModel: false
+        theme: false
     });
 
     // Auto-select available options when modal opens or data changes
@@ -31,8 +29,7 @@ export function ImportModal({ isOpen, onClose, onImport, availableData }: Import
         if (isOpen) {
             setSelectedOptions({
                 chats: availableData.chats,
-                theme: availableData.theme,
-                ollamaModel: availableData.ollamaModel
+                theme: availableData.theme
             });
         }
     }, [isOpen, availableData]);
@@ -151,32 +148,7 @@ export function ImportModal({ isOpen, onClose, onImport, availableData }: Import
                                         </div>
                                     </div>
 
-                                    {/* Model Option */}
-                                    <div
-                                        className={cn(
-                                            "flex items-center justify-between p-3 rounded-xl border transition-colors",
-                                            availableData.ollamaModel
-                                                ? "bg-white/5 border-white/10 cursor-pointer hover:bg-white/10"
-                                                : "bg-white/5 border-white/5 opacity-50 cursor-not-allowed"
-                                        )}
-                                        onClick={() => availableData.ollamaModel && setSelectedOptions(prev => ({ ...prev, ollamaModel: !prev.ollamaModel }))}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={cn("p-2 rounded-lg bg-orange-500/20 text-orange-400")}>
-                                                <Cpu className="h-4 w-4" />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium">Ollama Model</span>
-                                                {!availableData.ollamaModel && <span className="text-[10px] text-zinc-500">Not found in file</span>}
-                                            </div>
-                                        </div>
-                                        <div className={cn(
-                                            "h-5 w-5 rounded border flex items-center justify-center transition-colors",
-                                            selectedOptions.ollamaModel ? "bg-primary border-primary text-white" : "border-zinc-600"
-                                        )}>
-                                            {selectedOptions.ollamaModel && <Check className="h-3 w-3" />}
-                                        </div>
-                                    </div>
+
                                 </div>
 
                             </div>
@@ -187,7 +159,7 @@ export function ImportModal({ isOpen, onClose, onImport, availableData }: Import
                                     className="w-full font-medium"
                                     color="primary"
                                     onPress={handleImportClick}
-                                    isDisabled={!selectedOptions.chats && !selectedOptions.theme && !selectedOptions.ollamaModel}
+                                    isDisabled={!selectedOptions.chats && !selectedOptions.theme}
                                     style={{ borderRadius: `${theme.radius}rem` }}
                                 >
                                     Import Selected Data

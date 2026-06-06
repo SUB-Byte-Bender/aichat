@@ -14,12 +14,11 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ isOpen, onClose }: ExportModalProps) {
-    const { chats, theme, themeRadii, ollamaModel } = useChatStore();
+    const { chats, theme, themeRadii } = useChatStore();
 
     const [selectedOptions, setSelectedOptions] = useState({
         chats: true,
-        theme: true,
-        ollamaModel: true
+        theme: true
     });
 
     const [isDateRangeOpen, setIsDateRangeOpen] = useState(false);
@@ -66,10 +65,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                 exportData.themeRadii = themeRadii;
             }
 
-            // Export Ollama Model
-            if (selectedOptions.ollamaModel) {
-                exportData.ollamaModel = ollamaModel;
-            }
+
 
             // Generate File
             const dataStr = JSON.stringify(exportData, null, 2);
@@ -191,24 +187,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                                         </div>
                                     </div>
 
-                                    {/* Model Option */}
-                                    <div
-                                        className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
-                                        onClick={() => setSelectedOptions(prev => ({ ...prev, ollamaModel: !prev.ollamaModel }))}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={cn("p-2 rounded-lg bg-orange-500/20 text-orange-400")}>
-                                                <Cpu className="h-4 w-4" />
-                                            </div>
-                                            <span className="text-sm font-medium">Ollama Model</span>
-                                        </div>
-                                        <div className={cn(
-                                            "h-5 w-5 rounded border flex items-center justify-center transition-colors",
-                                            selectedOptions.ollamaModel ? "bg-primary border-primary text-white" : "border-zinc-600"
-                                        )}>
-                                            {selectedOptions.ollamaModel && <Check className="h-3 w-3" />}
-                                        </div>
-                                    </div>
+
                                 </div>
 
                                 {/* Date Range - Only show if Chats selected */}
@@ -277,7 +256,7 @@ export function ExportModal({ isOpen, onClose }: ExportModalProps) {
                                     className="w-full font-medium"
                                     color="primary"
                                     onPress={handleExport}
-                                    isDisabled={!selectedOptions.chats && !selectedOptions.theme && !selectedOptions.ollamaModel}
+                                    isDisabled={!selectedOptions.chats && !selectedOptions.theme}
                                     style={{ borderRadius: `${theme.radius}rem` }}
                                 >
                                     Export Selected Data
