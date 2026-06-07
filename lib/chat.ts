@@ -154,7 +154,7 @@ export async function generateChatMetadata(messages: Message[], apiKey: string |
     try {
         const prompt = `Analyze the conversation and provide a JSON response with two fields:
 1. 'title': a short max 5 word title.
-2. 'keyword': choose EXACTLY ONE of the following words that best fits the topic: message-circle, code, bug, database, globe, file-text, image, music, video, folder, shopping-cart, heart, star, zap, book-open, lightbulb, cpu, server, terminal, git-branch, palette, mail, user, users, briefcase, calculator, coffee, gamepad-2, wrench, rocket, brain, graduation-cap, car, smile, sun, moon, cloud, shield, lock, key, bell, calendar, clock, map, compass, flag, home, settings, pen-tool, camera, smartphone, plane, scissors, truck, utility-pole, umbrella, tree-pine, snowflake, flame, droplet, atom, beaker, crosshair, shield-alert, alert-triangle, check-circle, info.
+2. 'keyword': a single highly common, physical object noun representing the topic (e.g. 'rocket', 'droplet', 'calculator', 'camera'). Do NOT use abstract concepts or verbs like 'greeting' or 'addition'.
 Do not wrap in markdown blocks, return ONLY valid JSON like: {"title": "Title", "keyword": "car"}`;
         let jsonString = "";
 
