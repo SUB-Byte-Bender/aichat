@@ -5,7 +5,6 @@ import { Send, Bot, Sparkles, Terminal, SunSnow, Plus, Italic, Square } from "lu
 import { useChatStore } from "@/store/chat-store";
 import { Button, Textarea, cn } from "@heroui/react";
 import { MessageBubble } from "./message-bubble";
-import { getSystemPrompt } from "@/app/actions";
 import { Message, sendChatMessage, generateChatMetadata } from "@/lib/chat";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -124,13 +123,6 @@ export function ChatInterface() {
             let isFirstChunk = true;
             let assistantMessageIndex = -1; // Track the index of the assistant message we're updating
 
-            let systemPrompt = "";
-            try {
-                systemPrompt = await getSystemPrompt();
-            } catch (err) {
-                console.error("Failed to get system prompt:", err);
-            }
-
             const baseMessages = currentChatId ? [...messages, userMessage] : [userMessage];
             const baseMessagesToSend = baseMessages;
 
@@ -141,7 +133,6 @@ export function ChatInterface() {
                 messages: baseMessagesToSend,
                 groqApiKey: groqApiKey,
                 groqModel: groqModel,
-                systemPrompt: systemPrompt,
                 signal: abortControllerRef.current?.signal,
                 onChunk: (chunk) => {
                     if (isFirstChunk) {

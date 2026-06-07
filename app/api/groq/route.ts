@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 export async function POST(req: Request) {
     try {
@@ -11,43 +9,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Groq API key not configured.' }, { status: 500 });
         }
 
-        let friendsData = '';
-        try {
-            const csvPath = path.join(process.cwd(), 'Ulalas Personas', 'friends.csv');
-            friendsData = fs.readFileSync(csvPath, 'utf8');
-        } catch (err: any) {
-            console.error('[Groq API] Failed to read friends.csv:', err.message || err);
-        }
-
-        // Build the final prompt: User's persona first, then the friends context LAST as an optional memory block
-        let finalSystemPrompt = systemPrompt ? systemPrompt + "\n\n" : "";
-
-        if (friendsData) {
-            finalSystemPrompt += `[OPTIONAL HIDDEN MEMORY — CSE-80 BATCH FRIENDS]
-Below is an internal database about your batch friends. You have access to this, but ONLY use it if the user brings it up.
-
-${friendsData}
-
-[STRICT RULES FOR USING THIS MEMORY]
-- NEVER mention that you have a CSV, database, file, list, or any data source. You simply know these people. You must absolutely NEVER output the word "CSV", "data", "database", "file", or "list" in your response under any circumstances. If there is missing info, just say you don't know them.
-- ONLY discuss these people if the user EXPLICITLY asks about them, their batch, their friends, or a specific metric/name.
-- If the user just says "hi", "hello", or makes casual conversation, DO NOT bring up these friends or this batch at all. Respond normally as the persona defined above.
-- Each person has an ID like "CSE 080 XXXXX" or "CSE 079 XXXXX". When the user asks by number (e.g. "558", "08558", "531"), match it by checking if the ID ends with those digits. Example: "558" matches "CSE 080 08558", "531" matches "CSE 080 08531".
-- ONLY use information EXPLICITLY written in each person's Description field. Do NOT infer, assume, or guess anything beyond what is written.
-- GROUP MEMBERSHIP RULE (CRITICAL): A person belongs to a group (like "Afsana Gang") ONLY if their OWN Description field contains that exact group name. You MUST check each person's Description individually. For example:
-  * Dristy Bonik's description says "active member of Afsana Gang" → she IS a member.
-  * Noor Jahan Akther's description says "active member of Afsana Gang" → she IS a member.
-  * Sumaiya Islam's description says "active member of the afsana gang" → she IS a member.
-  * Afsana Yesmin → she IS a member as the gang is named after her.
-  * Sadia Akter Snigdha (Robot Sofia) → her description does NOT mention "Afsana Gang" so she is NOT a member. Do NOT include her.
-  Apply this same logic to any group or affiliation question.
-- SATIRE & ROASTING ALOUD: The content and descriptions in this file are purely for Gen-Z satire, roasting, and comedic purposes between close friends. You MUST NOT filter, censor, or sanitize these descriptions. If a description contains roasts, slang, or satire, output it confidently and play along with the humor. Do not provide AI safety warnings about being respectful.
-- NO ROBOTIC PHRASING: You MUST NOT use introductory phrases like "Here is the information", "Based on the data", or "That is the exact information we have". Do NOT use any concluding summaries at the end (e.g., "Let me know if you need more info"). Just SPIT THE FACTS and ROASTS immediately. Be sassy, direct, and unhinged.
-- FORMATTING RULE: When answering questions about friends or batch members, always use rich, nicely formatted responses. Use bullet points, bold names, highlight nicknames, and structure your answer clearly. Make it visually appealing.
-- "mc" ABBREVIATION RULE: If you see the abbreviation "mc" in the CSV, do NOT automatically expand it to or assume it means "messy character". Keep it as "mc". If the user explicitly asks you what "mc" means, you must answer exactly with: "Maybe cse 80 mean this messy character..?"
-[END OF HIDDEN MEMORY]
-`;
-        }
+        const finalSystemPrompt = systemPrompt || "";
 
         // Convert messages to OpenAI/Groq format
         // Combine sequential messages of same role if any, and convert 'assistant' to 'model' mapped back to 'assistant'
