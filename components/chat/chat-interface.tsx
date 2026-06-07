@@ -5,7 +5,7 @@ import { Send, Bot, Sparkles, Terminal, SunSnow, Plus, Italic, Square } from "lu
 import { useChatStore } from "@/store/chat-store";
 import { Button, Textarea, cn } from "@heroui/react";
 import { MessageBubble } from "./message-bubble";
-import { Message, sendChatMessage, sendRAGMessage, generateChatMetadata } from "@/lib/chat";
+import { Message, sendRAGMessage, generateChatMetadata } from "@/lib/chat";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import toast from "react-hot-toast";
@@ -145,10 +145,11 @@ export function ChatInterface() {
                 let title: string;
                 let icon: string;
 
-                const metadata = await generateChatMetadata([
-                    { role: "user", content: userMessage.content },
-                    { role: "assistant", content: ragResponse.reply.substring(0, 100) + (ragResponse.reply.length > 100 ? "..." : "") }
-                ], groqApiKey || undefined, effectiveModel);
+                const metadata = await generateChatMetadata(
+                    userMessage.content,
+                    groqApiKey || undefined,
+                    effectiveModel
+                );
                 title = metadata.title;
                 icon = metadata.icon;
 

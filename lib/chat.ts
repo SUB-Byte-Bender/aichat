@@ -12,23 +12,47 @@ export interface Message {
     content: string;
 }
 
-export interface SendMessageOptions {
-    messages: Message[];
-    groqApiKey?: string;
-    groqModel?: string;
-    systemPrompt?: string;
-    onChunk: (chunk: string) => void;
-    signal?: AbortSignal;
+// ---------------------------------------------------------------------------
+// Backend URL (from environment, never hard-coded in components)
+// ---------------------------------------------------------------------------
+const RAG_API_URL =
+    process.env.NEXT_PUBLIC_RAG_API_URL ||
+    'https://barber-lunar-default.ngrok-free.dev';
+
+// ---------------------------------------------------------------------------
+// TypeScript types for the FastAPI RAG backend
+// ---------------------------------------------------------------------------
+
+/** POST /metadata — request body */
+export interface MetadataRequest {
+    message: string;
+    api_key?: string | null;
+    model?: string | null;
 }
 
-// FastAPI RAG Backend URL
-const RAG_BACKEND_URL = process.env.NEXT_PUBLIC_RAG_BACKEND_URL || 'https://barber-lunar-default.ngrok-free.dev';
+/** POST /metadata — response */
+export interface MetadataResponse {
+    title: string;
+    keyword: string;
+}
 
+/** POST /chat — request body (matches ChatRequest schema in OpenAPI) */
+export interface ChatRequest {
+    session_id: string;
+    message: string;
+    api_key?: string | null;
+    model?: string | null;
+}
+
+/** Shape returned by sendRAGMessage after parsing the backend response */
 export interface RAGResponse {
     reply: string;
     sources: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Options for sendRAGMessage (kept for backward compat with chat-interface)
+// ---------------------------------------------------------------------------
 export interface SendRAGMessageOptions {
     prompt: string;
     sessionId?: string;
@@ -38,6 +62,9 @@ export interface SendRAGMessageOptions {
     signal?: AbortSignal;
 }
 
+// ---------------------------------------------------------------------------
+// sendRAGMessage — calls POST /chat on the FastAPI backend
+// ---------------------------------------------------------------------------
 export async function sendRAGMessage({
     prompt,
     sessionId = 'default_user_session',
@@ -46,7 +73,7 @@ export async function sendRAGMessage({
     vibe = 'Default',
     signal
 }: SendRAGMessageOptions): Promise<RAGResponse> {
-    const response = await fetch(`${RAG_BACKEND_URL}/api/chat`, {
+    const response = await fetch(`${RAG_API_URL}/chat`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -54,11 +81,10 @@ export async function sendRAGMessage({
             'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
-            prompt,
             session_id: sessionId,
-            model,
+            message: prompt,
             api_key: apiKey || null,
-            vibe,
+            model,
         }),
         signal,
     });
@@ -74,174 +100,93 @@ export async function sendRAGMessage({
         throw new Error(errorMsg);
     }
 
-    const data: RAGResponse = await response.json();
-    return data;
+    // Backend may return a plain string or a JSON object.
+    // Handle both gracefully to stay resilient.
+    const raw = await response.text();
+    let reply: string;
+    let sources: string[] = [];
+
+    try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'string') {
+            // JSON-encoded string (e.g. "\"Hello world\"")
+            reply = parsed;
+        } else if (parsed && typeof parsed === 'object') {
+            reply = parsed.reply || parsed.response || parsed.answer || JSON.stringify(parsed);
+            sources = Array.isArray(parsed.sources) ? parsed.sources : [];
+        } else {
+            reply = String(parsed);
+        }
+    } catch {
+        // Plain text response (not JSON)
+        reply = raw;
+    }
+
+    return { reply, sources };
 }
 
-export async function sendChatMessage({
-    messages,
-    groqApiKey = '',
-    groqModel = 'meta-llama/llama-4-scout-17b-16e-instruct',
-    systemPrompt: systemPromptOption,
-    onChunk,
-    signal
-}: SendMessageOptions) {
-    try {
-        let systemPrompt = '';
-        const chatMessages = [...messages];
-        
-        if (chatMessages.length > 0 && chatMessages[0].role === 'system') {
-            systemPrompt = chatMessages.shift()?.content || ''; 
-        }
+// ---------------------------------------------------------------------------
+// generateChatMetadata — calls POST /metadata on the FastAPI backend
+//
+// Replaces the old Groq-based approach. The backend returns { title, keyword }
+// and we resolve the keyword to a Lucide icon name via Fuse.js (or directly
+// if the keyword is already a valid Lucide icon name).
+// ---------------------------------------------------------------------------
+export async function generateChatMetadata(
+    userMessage: string,
+    apiKey: string | undefined,
+    model: string,
+): Promise<{ title: string; icon: string }> {
+    const FALLBACK_TITLE = 'New Chat';
+    const FALLBACK_ICON = 'message-circle';
 
-        const response = await fetch('/api/groq', {
+    try {
+        const body: MetadataRequest = {
+            message: userMessage,
+            api_key: apiKey || null,
+            model,
+        };
+
+        const response = await fetch(`${RAG_API_URL}/metadata`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
             },
-            body: JSON.stringify({
-                messages: chatMessages.map(m => ({
-                    role: m.role,
-                    content: m.content
-                })),
-                systemPrompt: systemPromptOption || systemPrompt, 
-                apiKey: groqApiKey,
-                model: groqModel
-            }),
-            signal,
+            body: JSON.stringify(body),
         });
 
         if (!response.ok) {
-            let errorMsg = 'Failed to connect to Groq API';
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.error || errorData.details || errorMsg;
-            } catch (e) {
-                errorMsg = await response.text() || errorMsg;
-            }
-            throw new Error(errorMsg);
+            console.error('Backend /metadata returned', response.status);
+            return { title: FALLBACK_TITLE, icon: FALLBACK_ICON };
         }
 
-        const usedModel = response.headers.get('X-Groq-Model-Used');
-        const requestedModel = response.headers.get('X-Groq-Requested-Model');
-        if (usedModel && requestedModel && usedModel !== requestedModel) {
-            console.log(`[Groq Fallback] Rate-limited on "${requestedModel}", using fallback "${usedModel}"`);
-            if (typeof window !== 'undefined') {
-                if ((window as any).__groqRevertTimer) {
-                    clearTimeout((window as any).__groqRevertTimer);
-                }
-                (window as any).__groqOriginalModel = requestedModel;
-                (window as any).__groqRevertTimer = setTimeout(() => {
-                    console.log(`[Groq Fallback] Reverting to original model: ${requestedModel}`);
-                    try {
-                        const { useChatStore } = require('@/store/chat-store');
-                        const store = useChatStore.getState();
-                        if (store.groqModel !== requestedModel) {
-                            store.setGroqModel(requestedModel);
-                        }
-                    } catch (e) {
-                        console.error('[Groq Fallback] Could not revert model:', e);
-                    }
-                    delete (window as any).__groqRevertTimer;
-                    delete (window as any).__groqOriginalModel;
-                }, 150000); 
-            }
+        const data = await response.json();
+
+        // Safely extract title & keyword with fallbacks
+        const title: string =
+            (typeof data?.title === 'string' && data.title.trim()) || FALLBACK_TITLE;
+        const keyword: string =
+            (typeof data?.keyword === 'string' && data.keyword.trim()) || FALLBACK_ICON;
+
+        // Resolve keyword → Lucide icon name
+        // 1. If the keyword (kebab-cased) is already a valid Lucide icon, use directly
+        const normalizedKeyword = keyword
+            .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+            .toLowerCase();
+
+        if (iconKeys.includes(normalizedKeyword)) {
+            return { title: title.trim(), icon: normalizedKeyword };
         }
 
-        if (!response.body) {
-            throw new Error("No response body received from Groq API");
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let fullContent = '';
-        let buffer = '';
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                buffer += chunk;
-
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const dataStr = line.replace('data: ', '').trim();
-                        if (dataStr === '[DONE]') continue;
-
-                        try {
-                            const data = JSON.parse(dataStr);
-                            const textChunk = data.choices?.[0]?.delta?.content;
-                            if (textChunk) {
-                                fullContent += textChunk;
-                                onChunk(fullContent);
-                            }
-                        } catch (e) {}
-                    }
-                }
-            }
-
-            if (buffer && buffer.startsWith('data: ')) {
-                const dataStr = buffer.replace('data: ', '').trim();
-                if (dataStr !== '[DONE]') {
-                    try {
-                        const data = JSON.parse(dataStr);
-                        const textChunk = data.choices?.[0]?.delta?.content;
-                        if (textChunk) {
-                            fullContent += textChunk;
-                            onChunk(fullContent);
-                        }
-                    } catch (e) {}
-                }
-            }
-        } finally {
-            reader.releaseLock();
-        }
-    } catch (error) {
-        console.error('Chat error:', error);
-        throw error;
-    }
-}
-
-export async function generateChatMetadata(messages: Message[], apiKey: string | undefined, model: string): Promise<{ title: string, icon: string }> {
-    try {
-        const prompt = `Analyze the conversation and provide a JSON response with two fields:
-1. 'title': a short max 5 word title.
-2. 'keyword': a single highly common, physical object noun representing the topic (e.g. 'rocket', 'droplet', 'calculator', 'camera'). Do NOT use abstract concepts or verbs like 'greeting' or 'addition'.
-Do not wrap in markdown blocks, return ONLY valid JSON like: {"title": "Title", "keyword": "car"}`;
-        let jsonString = "";
-
-        await sendChatMessage({
-            messages: [...messages, { role: 'user', content: prompt }],
-            groqApiKey: apiKey || '',
-            groqModel: model,
-            onChunk: (chunk) => { jsonString = chunk; }
-        });
-
-        // Try to parse the JSON
-        let title = "New Chat";
-        let keyword = "message-circle";
-        try {
-            // Find the JSON block if the model hallucinated extra text
-            const match = jsonString.match(/\{[\s\S]*\}/);
-            const parsed = JSON.parse(match ? match[0] : jsonString);
-            title = parsed.title || title;
-            keyword = parsed.keyword || keyword;
-        } catch (e) {
-            console.error('Failed to parse metadata JSON', e, jsonString);
-        }
-
-        // Search for the closest matching icon
+        // 2. Otherwise fuzzy-match via Fuse.js (existing behavior)
         const searchResults = fuse.search(keyword);
-        const icon = searchResults.length > 0 ? searchResults[0].item : 'message-circle';
+        const icon =
+            searchResults.length > 0 ? searchResults[0].item : FALLBACK_ICON;
 
         return { title: title.trim(), icon };
     } catch (error) {
         console.error('Error generating chat metadata:', error);
-        return { title: "New Chat", icon: "message-circle" };
+        return { title: FALLBACK_TITLE, icon: FALLBACK_ICON };
     }
 }
