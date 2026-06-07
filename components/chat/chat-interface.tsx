@@ -5,7 +5,7 @@ import { Send, Bot, Sparkles, Terminal, SunSnow, Plus, Italic, Square } from "lu
 import { useChatStore } from "@/store/chat-store";
 import { Button, Textarea, cn } from "@heroui/react";
 import { MessageBubble } from "./message-bubble";
-import { Message, sendChatMessage, generateChatMetadata } from "@/lib/chat";
+import { Message, sendChatMessage, sendRAGMessage, generateChatMetadata } from "@/lib/chat";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import toast from "react-hot-toast";
@@ -119,58 +119,35 @@ export function ChatInterface() {
         abortControllerRef.current = new AbortController();
 
         try {
-            let fullResponse = "";
-            let isFirstChunk = true;
-            let assistantMessageIndex = -1; // Track the index of the assistant message we're updating
-
-            const baseMessages = currentChatId ? [...messages, userMessage] : [userMessage];
-            const baseMessagesToSend = baseMessages;
+            const defaultModel = process.env.NEXT_PUBLIC_DEFAULT_GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+            const effectiveModel = groqModel || defaultModel;
 
             // Dismiss any existing error toasts
             toast.dismiss('brain-missing-toast');
 
-            await sendChatMessage({
-                messages: baseMessagesToSend,
-                groqApiKey: groqApiKey,
-                groqModel: groqModel,
+            // Call the RAG backend (non-streaming)
+            const ragResponse = await sendRAGMessage({
+                prompt: userMessage.content,
+                sessionId: chatId,
+                model: effectiveModel,
+                apiKey: groqApiKey || undefined,
                 signal: abortControllerRef.current?.signal,
-                onChunk: (chunk) => {
-                    if (isFirstChunk) {
-                        addMessageToChat(chatId, { role: "assistant", content: "" });
-                        const currentChat = useChatStore.getState().chats.find(c => c.id === chatId);
-                        if (currentChat) {
-                            assistantMessageIndex = currentChat.messages.length - 1;
-                        }
-                        isFirstChunk = false;
-                    }
-                    fullResponse = chunk; // sendChatMessage returns the accumulated string buffer directly
-                    if (assistantMessageIndex >= 0) {
-                        useChatStore.setState((state) => ({
-                            chats: state.chats.map((c) =>
-                                c.id === chatId
-                                    ? {
-                                        ...c,
-                                        messages: c.messages.map((m, i) =>
-                                            i === assistantMessageIndex ? { ...m, content: fullResponse } : m
-                                        )
-                                    }
-                                    : c
-                            ),
-                        }));
-                    }
-                }
             });
+
+            // Add the assistant's reply as a complete message
+            const assistantMessage: Message = {
+                role: "assistant",
+                content: ragResponse.reply,
+            };
+            addMessageToChat(chatId, assistantMessage);
 
             if (!currentChatId) {
                 let title: string;
                 let icon: string;
 
-                const defaultModel = process.env.NEXT_PUBLIC_DEFAULT_GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
-                const effectiveModel = groqModel || defaultModel;
-
                 const metadata = await generateChatMetadata([
                     { role: "user", content: userMessage.content },
-                    { role: "assistant", content: fullResponse.substring(0, 100) + (fullResponse.length > 100 ? "..." : "") }
+                    { role: "assistant", content: ragResponse.reply.substring(0, 100) + (ragResponse.reply.length > 100 ? "..." : "") }
                 ], groqApiKey || undefined, effectiveModel);
                 title = metadata.title;
                 icon = metadata.icon;

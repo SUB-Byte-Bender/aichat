@@ -21,6 +21,63 @@ export interface SendMessageOptions {
     signal?: AbortSignal;
 }
 
+// FastAPI RAG Backend URL
+const RAG_BACKEND_URL = process.env.NEXT_PUBLIC_RAG_BACKEND_URL || 'https://barber-lunar-default.ngrok-free.dev';
+
+export interface RAGResponse {
+    reply: string;
+    sources: string[];
+}
+
+export interface SendRAGMessageOptions {
+    prompt: string;
+    sessionId?: string;
+    model: string;
+    apiKey?: string;
+    vibe?: string;
+    signal?: AbortSignal;
+}
+
+export async function sendRAGMessage({
+    prompt,
+    sessionId = 'default_user_session',
+    model,
+    apiKey,
+    vibe = 'Default',
+    signal
+}: SendRAGMessageOptions): Promise<RAGResponse> {
+    const response = await fetch(`${RAG_BACKEND_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            // Required for ngrok free tier to bypass the browser warning page
+            'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({
+            prompt,
+            session_id: sessionId,
+            model,
+            api_key: apiKey || null,
+            vibe,
+        }),
+        signal,
+    });
+
+    if (!response.ok) {
+        let errorMsg = 'Failed to connect to RAG backend';
+        try {
+            const errorData = await response.json();
+            errorMsg = errorData.detail || errorData.error || errorMsg;
+        } catch {
+            errorMsg = await response.text() || errorMsg;
+        }
+        throw new Error(errorMsg);
+    }
+
+    const data: RAGResponse = await response.json();
+    return data;
+}
+
 export async function sendChatMessage({
     messages,
     groqApiKey = '',
