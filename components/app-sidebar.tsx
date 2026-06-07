@@ -72,46 +72,24 @@ import { RenameDialog } from "@/components/rename-dialog";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import dynamic from 'next/dynamic';
+import dynamicIconImports from 'lucide-react/dynamicIconImports';
 
-// Icon map for dynamic icon selection
-const iconMap: Record<string, LucideIcon> = {
-  MessageCircle,
-  Code,
-  Bug,
-  Database,
-  Globe,
-  FileText,
-  Image,
-  Music,
-  Video,
-  Folder,
-  ShoppingCart,
-  Heart,
-  Star,
-  Zap,
-  BookOpen,
-  Lightbulb,
-  Cpu,
-  Server,
-  Terminal,
-  GitBranch,
-  Palette,
-  Mail,
-  User,
-  Users,
-  Briefcase,
-  Calculator,
-  Coffee,
-  Gamepad2,
-  Wrench,
-  Rocket,
-  Brain,
-  GraduationCap,
-};
+const iconCache: Record<string, any> = {};
 
-const getIconComponent = (iconName?: string): LucideIcon => {
-  if (!iconName) return MessageCircle;
-  return iconMap[iconName] || MessageCircle;
+const DynamicIcon = ({ name, className }: { name?: string, className?: string }) => {
+  const normalizedName = name ? name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase() : 'message-circle';
+  const validName = normalizedName in dynamicIconImports ? normalizedName : 'message-circle';
+  
+  if (!iconCache[validName]) {
+    iconCache[validName] = dynamic(dynamicIconImports[validName as keyof typeof dynamicIconImports], {
+      ssr: false,
+      loading: () => <div className={cn("rounded-full bg-white/10 animate-pulse", className)} />
+    });
+  }
+  
+  const LucideComponent = iconCache[validName];
+  return <LucideComponent className={className} />;
 };
 
 export function AppSidebar() {
@@ -481,7 +459,6 @@ export function AppSidebar() {
                               {category}
                             </div>
                             {categoryChats.map((chat) => {
-                              const ChatIcon = getIconComponent(chat.icon);
                               const isLoading = loadingChatId === chat.id;
                               return (
                                 <SidebarMenuItem
@@ -513,7 +490,7 @@ export function AppSidebar() {
                                     className={cn("group relative m-auto", state === "collapsed" && "justify-center")}
                                     tooltip={chat.title}
                                   >
-                                    <ChatIcon className="h-5 w-5 shrink-0" />
+                                    <DynamicIcon name={chat.icon} className="h-5 w-5 shrink-0" />
                                     <span className="truncate flex-1 select-none" title={chat.title}>{chat.title}</span>
                                     {isLoading && (
                                       <div className="flex items-center gap-1 ml-2">

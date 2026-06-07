@@ -6,6 +6,7 @@ const nextConfig = {
             '/api/**/*': ['./Ulalas Personas/**/*'],
         },
     },
+    transpilePackages: ['lucide-react'],
 };
 
 export default nextConfig;

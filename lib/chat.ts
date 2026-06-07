@@ -1,3 +1,12 @@
+import Fuse from 'fuse.js';
+import dynamicIconImports from 'lucide-react/dynamicIconImports';
+
+const iconKeys = Object.keys(dynamicIconImports);
+const fuse = new Fuse(iconKeys, {
+    threshold: 0.3,
+    distance: 100,
+});
+
 export interface Message {
     role: 'system' | 'user' | 'assistant';
     content: string;
@@ -141,75 +150,41 @@ export async function sendChatMessage({
     }
 }
 
-export async function generateChatNameWithGroq(messages: Message[], apiKey: string | undefined, model: string): Promise<string> {
+export async function generateChatMetadata(messages: Message[], apiKey: string | undefined, model: string): Promise<{ title: string, icon: string }> {
     try {
-        const prompt = "Generate a short, concise title (max 5 words) for this chat conversation. Do not use quotes. Just the title.";
-        let title = "";
+        const prompt = `Analyze the conversation and provide a JSON response with two fields:
+1. 'title': a short max 5 word title.
+2. 'keyword': choose EXACTLY ONE of the following words that best fits the topic: message-circle, code, bug, database, globe, file-text, image, music, video, folder, shopping-cart, heart, star, zap, book-open, lightbulb, cpu, server, terminal, git-branch, palette, mail, user, users, briefcase, calculator, coffee, gamepad-2, wrench, rocket, brain, graduation-cap, car, smile, sun, moon, cloud, shield, lock, key, bell, calendar, clock, map, compass, flag, home, settings, pen-tool, camera, smartphone, plane, scissors, truck, utility-pole, umbrella, tree-pine, snowflake, flame, droplet, atom, beaker, crosshair, shield-alert, alert-triangle, check-circle, info.
+Do not wrap in markdown blocks, return ONLY valid JSON like: {"title": "Title", "keyword": "car"}`;
+        let jsonString = "";
 
         await sendChatMessage({
             messages: [...messages, { role: 'user', content: prompt }],
             groqApiKey: apiKey || '',
             groqModel: model,
-            onChunk: (chunk) => { title = chunk; }
+            onChunk: (chunk) => { jsonString = chunk; }
         });
 
-        return title.trim();
-    } catch (error) {
-        console.error('Error generating Groq chat name:', error);
-        return "New Chat";
-    }
-}
-
-export async function generateChatIcon(messages: Message[], model: string): Promise<string> {
-    try {
-        const content = messages.map(m => m.content.toLowerCase()).join(' ');
-
-        const keywordMap: Record<string, string> = {
-            'code|programming|function|class|javascript|python|typescript|java|react|vue': 'Code',
-            'bug|error|fix|debug|issue|problem': 'Bug',
-            'database|sql|query|data|mongodb|postgres': 'Database',
-            'web|website|internet|url|http|api': 'Globe',
-            'file|document|text|write|read': 'FileText',
-            'image|photo|picture|png|jpg|svg': 'Image',
-            'music|song|audio|sound|mp3': 'Music',
-            'video|movie|film|mp4|youtube': 'Video',
-            'folder|directory|organize|structure': 'Folder',
-            'shop|cart|buy|purchase|store|ecommerce': 'ShoppingCart',
-            'love|like|favorite|heart': 'Heart',
-            'star|rating|favorite|best': 'Star',
-            'fast|speed|quick|lightning|performance': 'Zap',
-            'book|read|learn|study|documentation': 'BookOpen',
-            'idea|think|suggest|creative|innovation': 'Lightbulb',
-            'cpu|processor|computer|hardware|chip': 'Cpu',
-            'server|backend|host|deploy|cloud': 'Server',
-            'terminal|command|cli|shell|bash': 'Terminal',
-            'git|branch|version|commit|repository': 'GitBranch',
-            'color|design|art|draw|paint': 'Palette',
-            'email|mail|message|send|contact': 'Mail',
-            'user|account|profile|person': 'User',
-            'team|group|people|users|collaborate': 'Users',
-            'work|business|job|career|office': 'Briefcase',
-            'calculate|math|number|count|sum': 'Calculator',
-            'coffee|break|relax|cafe': 'Coffee',
-            'game|play|gaming|fun|entertainment': 'Gamepad2',
-            'tool|fix|repair|build|wrench': 'Wrench',
-            'rocket|launch|start|deploy|space': 'Rocket',
-            'ai|intelligence|brain|think|smart|artificial': 'Brain',
-            'education|school|university|graduate|learn': 'GraduationCap',
-            'animal|pet|dog|cat|bird|wildlife|creature': 'Heart',
-            'tire|car|vehicle|wheel|automotive': 'Wrench',
-        };
-
-        for (const [keywords, icon] of Object.entries(keywordMap)) {
-            const keywordRegex = new RegExp(keywords, 'i');
-            if (keywordRegex.test(content)) {
-                return icon;
-            }
+        // Try to parse the JSON
+        let title = "New Chat";
+        let keyword = "message-circle";
+        try {
+            // Find the JSON block if the model hallucinated extra text
+            const match = jsonString.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(match ? match[0] : jsonString);
+            title = parsed.title || title;
+            keyword = parsed.keyword || keyword;
+        } catch (e) {
+            console.error('Failed to parse metadata JSON', e, jsonString);
         }
 
-        return "MessageCircle";
+        // Search for the closest matching icon
+        const searchResults = fuse.search(keyword);
+        const icon = searchResults.length > 0 ? searchResults[0].item : 'message-circle';
+
+        return { title: title.trim(), icon };
     } catch (error) {
-        console.error('Error generating chat icon:', error);
-        return "MessageCircle";
+        console.error('Error generating chat metadata:', error);
+        return { title: "New Chat", icon: "message-circle" };
     }
 }

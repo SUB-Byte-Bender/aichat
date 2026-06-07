@@ -6,7 +6,7 @@ import { useChatStore } from "@/store/chat-store";
 import { Button, Textarea, cn } from "@heroui/react";
 import { MessageBubble } from "./message-bubble";
 import { getSystemPrompt } from "@/app/actions";
-import { Message, sendChatMessage, generateChatNameWithGroq, generateChatIcon } from "@/lib/chat";
+import { Message, sendChatMessage, generateChatMetadata } from "@/lib/chat";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import toast from "react-hot-toast";
@@ -177,16 +177,12 @@ export function ChatInterface() {
                 const defaultModel = process.env.NEXT_PUBLIC_DEFAULT_GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
                 const effectiveModel = groqModel || defaultModel;
 
-                [title, icon] = await Promise.all([
-                    generateChatNameWithGroq([
-                        { role: "user", content: userMessage.content },
-                        { role: "assistant", content: fullResponse }
-                    ], groqApiKey || undefined, effectiveModel),
-                    generateChatIcon([
-                        userMessage,
-                        { role: "assistant", content: fullResponse }
-                    ], "groq")
-                ]);
+                const metadata = await generateChatMetadata([
+                    { role: "user", content: userMessage.content },
+                    { role: "assistant", content: fullResponse.substring(0, 100) + (fullResponse.length > 100 ? "..." : "") }
+                ], groqApiKey || undefined, effectiveModel);
+                title = metadata.title;
+                icon = metadata.icon;
 
                 console.log('Generated title:', title, 'icon:', icon);
                 updateChat(chatId, { title, icon });
