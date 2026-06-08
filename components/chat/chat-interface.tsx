@@ -18,6 +18,7 @@ export function ChatInterface() {
 
         addChat,
         addMessageToChat,
+        updateLastMessage,
         updateChat,
         deleteChat,
         theme,
@@ -125,21 +126,30 @@ export function ChatInterface() {
             // Dismiss any existing error toasts
             toast.dismiss('brain-missing-toast');
 
-            // Call the RAG backend (non-streaming)
+            let messageAdded = false;
+
+            // Call the RAG backend (streaming)
             const ragResponse = await sendRAGMessage({
                 prompt: userMessage.content,
                 sessionId: chatId,
                 model: effectiveModel,
                 apiKey: groqApiKey || undefined,
                 signal: abortControllerRef.current?.signal,
+                onChunk: (chunk) => {
+                    if (!messageAdded) {
+                        setIsLoading(false);
+                        setLoadingChatId(null);
+                        addMessageToChat(chatId, { role: "assistant", content: chunk });
+                        messageAdded = true;
+                    } else {
+                        updateLastMessage(chatId, chunk);
+                    }
+                }
             });
 
-            // Add the assistant's reply as a complete message
-            const assistantMessage: Message = {
-                role: "assistant",
-                content: ragResponse.reply,
-            };
-            addMessageToChat(chatId, assistantMessage);
+            if (!messageAdded) {
+                addMessageToChat(chatId, { role: "assistant", content: ragResponse.reply });
+            }
 
             if (!currentChatId) {
                 let title: string;

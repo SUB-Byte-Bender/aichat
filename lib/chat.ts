@@ -60,6 +60,7 @@ export interface SendRAGMessageOptions {
     apiKey?: string;
     vibe?: string;
     signal?: AbortSignal;
+    onChunk?: (chunk: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +72,8 @@ export async function sendRAGMessage({
     model,
     apiKey,
     vibe = 'Default',
-    signal
+    signal,
+    onChunk
 }: SendRAGMessageOptions): Promise<RAGResponse> {
     const response = await fetch(`${RAG_API_URL}/chat`, {
         method: 'POST',
@@ -100,26 +102,47 @@ export async function sendRAGMessage({
         throw new Error(errorMsg);
     }
 
-    // Backend may return a plain string or a JSON object.
-    // Handle both gracefully to stay resilient.
-    const raw = await response.text();
-    let reply: string;
+    let reply = '';
     let sources: string[] = [];
 
-    try {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === 'string') {
-            // JSON-encoded string (e.g. "\"Hello world\"")
-            reply = parsed;
-        } else if (parsed && typeof parsed === 'object') {
-            reply = parsed.reply || parsed.response || parsed.answer || JSON.stringify(parsed);
-            sources = Array.isArray(parsed.sources) ? parsed.sources : [];
-        } else {
-            reply = String(parsed);
+    if (onChunk && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunkText = decoder.decode(value, { stream: true });
+                if (chunkText) {
+                    reply += chunkText;
+                    onChunk(reply);
+                }
+            }
+        } finally {
+            reader.releaseLock();
         }
-    } catch {
-        // Plain text response (not JSON)
-        reply = raw;
+    } else {
+        // Backend may return a plain string or a JSON object.
+        // Handle both gracefully to stay resilient.
+        const raw = await response.text();
+
+        try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === 'string') {
+                // JSON-encoded string (e.g. "\"Hello world\"")
+                reply = parsed;
+            } else if (parsed && typeof parsed === 'object') {
+                reply = parsed.reply || parsed.response || parsed.answer || JSON.stringify(parsed);
+                sources = Array.isArray(parsed.sources) ? parsed.sources : [];
+            } else {
+                reply = String(parsed);
+            }
+        } catch {
+            // Plain text response (not JSON)
+            reply = raw;
+        }
     }
 
     return { reply, sources };

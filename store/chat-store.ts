@@ -29,6 +29,7 @@ interface ChatState {
     setCurrentChatId: (id: string | null) => void;
     setLoadingChatId: (id: string | null) => void;
     addMessageToChat: (chatId: string, message: Message) => void;
+    updateLastMessage: (chatId: string, content: string) => void;
     setTheme: (theme: ThemeConfig) => void;
     setThemeRadius: (themeName: string, radius: number) => void;
     setGroqApiKey: (key: string) => void;
@@ -111,6 +112,20 @@ export const useChatStore = create<ChatState>()(
                         ? { ...c, messages: [...c.messages, message], lastModified: Date.now() }
                         : c
                 ),
+            })),
+
+            updateLastMessage: (chatId, content) => set((state) => ({
+                chats: state.chats.map((c) => {
+                    if (c.id === chatId && c.messages.length > 0) {
+                        const newMessages = [...c.messages];
+                        newMessages[newMessages.length - 1] = {
+                            ...newMessages[newMessages.length - 1],
+                            content: content
+                        };
+                        return { ...c, messages: newMessages, lastModified: Date.now() };
+                    }
+                    return c;
+                }),
             })),
 
             setTheme: (theme) => set({ theme }),
