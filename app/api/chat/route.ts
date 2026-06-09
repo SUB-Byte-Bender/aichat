@@ -1,12 +1,11 @@
-import { generateEmbedding } from '@/lib/embeddings';
 import { searchDocuments } from '@/lib/supabase';
 import { callGroqStreaming, type GroqMessage } from '@/lib/groq';
 
 // ---------------------------------------------------------------------------
 // POST /api/chat — Main RAG pipeline
 //
-// 1. Embed user message → 384-dim vector
-// 2. Search Supabase pgvector → top 3 matching chunks
+// 1. Extract query text from user message
+// 2. Search Supabase for matching chunks (full-text search)
 // 3. Build system prompt with context + history
 // 4. Stream Groq LLM response back as text/plain
 // ---------------------------------------------------------------------------
@@ -31,20 +30,16 @@ export async function POST(req: Request) {
             });
         }
 
-        // ----- Step 1: Generate embedding -----
-        console.log('[/api/chat] Generating embedding...');
-        const embedding = await generateEmbedding(message);
-
-        // ----- Step 2: Search for relevant context -----
-        console.log('[/api/chat] Searching documents...');
-        const docs = await searchDocuments(embedding, 3);
+        // ----- Step 1: Search for relevant context -----
+        console.log('[/api/chat] Searching documents for:', message.substring(0, 80));
+        const docs = await searchDocuments(message, 3);
         const context = docs.length > 0
             ? docs.map(d => d.content).join('\n')
             : 'No relevant documents found.';
 
         console.log(`[/api/chat] Found ${docs.length} relevant chunks`);
 
-        // ----- Step 3: Format history (last 4 messages) -----
+        // ----- Step 2: Format history (last 4 messages) -----
         const recentHistory = history.slice(-4);
         const historyText = recentHistory.length > 0
             ? recentHistory.map(m =>
@@ -52,7 +47,7 @@ export async function POST(req: Request) {
             ).join('\n')
             : '';
 
-        // ----- Step 4: Build system prompt (from original backend) -----
+        // ----- Step 3: Build system prompt (from original backend) -----
         const systemPrompt = `You are a helpful AI assistant. Use the following context to answer the user's question.
 
 Context:
@@ -64,7 +59,7 @@ ${historyText}
 User: ${message}
 AI:`;
 
-        // ----- Step 5: Call Groq with streaming -----
+        // ----- Step 4: Call Groq with streaming -----
         const messages: GroqMessage[] = [
             { role: 'user', content: systemPrompt },
         ];
@@ -76,7 +71,7 @@ AI:`;
             temperature: 0.5,
         });
 
-        // ----- Step 6: Parse SSE stream → plain text stream -----
+        // ----- Step 5: Parse SSE stream → plain text stream -----
         const stream = new ReadableStream({
             async start(controller) {
                 const reader = groqResponse.body?.getReader();
