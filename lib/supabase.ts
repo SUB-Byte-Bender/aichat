@@ -47,8 +47,16 @@ export async function searchDocuments(
     embedding: number[],
     matchCount: number = 3,
 ): Promise<DocumentResult[]> {
+    // Guard: don't search with empty embeddings
+    if (!embedding || embedding.length === 0) {
+        console.warn('[Supabase] Skipping search — embedding is empty');
+        return [];
+    }
+
     try {
         const supabase = getClient();
+
+        console.log(`[Supabase] Calling match_documents with ${embedding.length}-dim vector, match_count=${matchCount}`);
 
         const { data, error } = await supabase.rpc('match_documents', {
             query_embedding: embedding,
@@ -56,10 +64,11 @@ export async function searchDocuments(
         });
 
         if (error) {
-            console.error('[Supabase] match_documents RPC error:', error.message);
+            console.error('[Supabase] match_documents RPC error:', error.message, error.details, error.hint);
             return [];
         }
 
+        console.log(`[Supabase] Found ${data?.length || 0} results`);
         return (data as DocumentResult[]) || [];
     } catch (err) {
         console.error('[Supabase] searchDocuments error:', err);
