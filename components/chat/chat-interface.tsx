@@ -134,6 +134,7 @@ export function ChatInterface() {
                 sessionId: chatId,
                 model: effectiveModel,
                 apiKey: groqApiKey || undefined,
+                history: messages.slice(-4),
                 signal: abortControllerRef.current?.signal,
                 onChunk: (chunk) => {
                     if (!messageAdded) {

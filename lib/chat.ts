@@ -13,86 +13,47 @@ export interface Message {
 }
 
 // ---------------------------------------------------------------------------
-// Backend URL (from environment, never hard-coded in components)
-// ---------------------------------------------------------------------------
-const RAG_API_URL =
-    process.env.NEXT_PUBLIC_RAG_API_URL ||
-    'https://barber-lunar-default.ngrok-free.dev';
-
-// ---------------------------------------------------------------------------
-// TypeScript types for the FastAPI RAG backend
-// ---------------------------------------------------------------------------
-
-/** POST /metadata — request body */
-export interface MetadataRequest {
-    message: string;
-    api_key?: string | null;
-    model?: string | null;
-}
-
-/** POST /metadata — response */
-export interface MetadataResponse {
-    title: string;
-    keyword: string;
-}
-
-/** POST /chat — request body (matches ChatRequest schema in OpenAPI) */
-export interface ChatRequest {
-    session_id: string;
-    message: string;
-    api_key?: string | null;
-    model?: string | null;
-}
-
-/** Shape returned by sendRAGMessage after parsing the backend response */
-export interface RAGResponse {
-    reply: string;
-    sources: string[];
-}
-
-// ---------------------------------------------------------------------------
-// Options for sendRAGMessage (kept for backward compat with chat-interface)
+// Options for sendRAGMessage
 // ---------------------------------------------------------------------------
 export interface SendRAGMessageOptions {
     prompt: string;
     sessionId?: string;
     model: string;
     apiKey?: string;
-    vibe?: string;
+    history?: Message[];
     signal?: AbortSignal;
     onChunk?: (chunk: string) => void;
 }
 
 // ---------------------------------------------------------------------------
-// sendRAGMessage — calls POST /chat on the FastAPI backend
+// sendRAGMessage — calls POST /api/chat (local Next.js API route)
 // ---------------------------------------------------------------------------
 export async function sendRAGMessage({
     prompt,
     sessionId = 'default_user_session',
     model,
     apiKey,
-    vibe = 'Default',
+    history = [],
     signal,
     onChunk
-}: SendRAGMessageOptions): Promise<RAGResponse> {
-    const response = await fetch(`${RAG_API_URL}/chat`, {
+}: SendRAGMessageOptions): Promise<{ reply: string; sources: string[] }> {
+    const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            // Required for ngrok free tier to bypass the browser warning page
-            'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
             session_id: sessionId,
             message: prompt,
             api_key: apiKey || null,
             model,
+            history: history.map(m => ({ role: m.role, content: m.content })),
         }),
         signal,
     });
 
     if (!response.ok) {
-        let errorMsg = 'Failed to connect to RAG backend';
+        let errorMsg = 'Failed to get AI response';
         try {
             const errorData = await response.json();
             errorMsg = errorData.detail || errorData.error || errorMsg;
@@ -103,7 +64,7 @@ export async function sendRAGMessage({
     }
 
     let reply = '';
-    let sources: string[] = [];
+    const sources: string[] = [];
 
     if (onChunk && response.body) {
         const reader = response.body.getReader();
@@ -124,18 +85,16 @@ export async function sendRAGMessage({
             reader.releaseLock();
         }
     } else {
-        // Backend may return a plain string or a JSON object.
-        // Handle both gracefully to stay resilient.
+        // Non-streaming fallback
         const raw = await response.text();
 
         try {
             const parsed = JSON.parse(raw);
             if (typeof parsed === 'string') {
-                // JSON-encoded string (e.g. "\"Hello world\"")
                 reply = parsed;
             } else if (parsed && typeof parsed === 'object') {
                 reply = parsed.reply || parsed.response || parsed.answer || JSON.stringify(parsed);
-                sources = Array.isArray(parsed.sources) ? parsed.sources : [];
+                sources.push(...(Array.isArray(parsed.sources) ? parsed.sources : []));
             } else {
                 reply = String(parsed);
             }
@@ -149,11 +108,10 @@ export async function sendRAGMessage({
 }
 
 // ---------------------------------------------------------------------------
-// generateChatMetadata — calls POST /metadata on the FastAPI backend
+// generateChatMetadata — calls POST /api/metadata (local Next.js API route)
 //
-// Replaces the old Groq-based approach. The backend returns { title, keyword }
-// and we resolve the keyword to a Lucide icon name via Fuse.js (or directly
-// if the keyword is already a valid Lucide icon name).
+// The backend returns { title, keyword } and we resolve the keyword to a
+// Lucide icon name via Fuse.js (or directly if it's already valid).
 // ---------------------------------------------------------------------------
 export async function generateChatMetadata(
     userMessage: string,
@@ -164,23 +122,20 @@ export async function generateChatMetadata(
     const FALLBACK_ICON = 'message-circle';
 
     try {
-        const body: MetadataRequest = {
-            message: userMessage,
-            api_key: apiKey || null,
-            model,
-        };
-
-        const response = await fetch(`${RAG_API_URL}/metadata`, {
+        const response = await fetch('/api/metadata', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true',
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify({
+                message: userMessage,
+                api_key: apiKey || null,
+                model,
+            }),
         });
 
         if (!response.ok) {
-            console.error('Backend /metadata returned', response.status);
+            console.error('/api/metadata returned', response.status);
             return { title: FALLBACK_TITLE, icon: FALLBACK_ICON };
         }
 
