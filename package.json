@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@heroui/react": "^2.2.9",
-    "@huggingface/transformers": "^4.2.0",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
